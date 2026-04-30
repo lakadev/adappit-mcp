@@ -1,0 +1,31 @@
+{
+  "name": "adappit-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for AdAppIt — publish HTML5 games/apps as real Android apps",
+  "main": "index.js",
+  "bin": {
+    "adappit-mcp": "./index.js"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "inspect": "npx @modelcontextprotocol/inspector node index.js"
+  },
+  "keywords": [
+    "mcp",
+    "modelcontextprotocol",
+    "android",
+    "html5",
+    "games",
+    "apk",
+    "adappit"
+  ],
+  "author": "lakadev",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.4.1"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

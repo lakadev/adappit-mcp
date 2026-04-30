@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "adappit": {
+      "command": "npx",
+      "args": ["adappit-mcp"]
+    }
+  }
+}
