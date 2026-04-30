@@ -77,7 +77,7 @@ function filenameFromUrl(url, defaultName) {
 
 const server = new McpServer({
   name: 'adappit',
-  version: '1.0.0',
+  version: '1.0.1',
 })
 
 // ── Tool: publish ─────────────────────────────────────────────────────────────
@@ -136,19 +136,19 @@ server.tool(
     }
 
     const buildId  = result.buildId || result.build_id || result.id
-    const slug     = result.slug || ''
-    const token    = result.ownerToken || result.owner_token || ''
+    const slug      = result.slug || ''
+    const token     = result.ownerToken || result.owner_token || ''
+    const ownerUrl  = token ? `${API_URL}/owner/v1/verify?token=${encodeURIComponent(token)}` : null
 
     const lines = [
       `✅ Build submitted successfully!`,
       ``,
       `**Build ID:** ${buildId}`,
-      slug  ? `**Slug:** ${slug}` : '',
-      token ? `**Owner token:** ${token}` : '',
       ``,
       `Use \`check_build_status\` with build_id="${buildId}" to follow progress.`,
       `Build typically takes 2–5 minutes.`,
-    ].filter(l => l !== undefined && !(l === '' && false))
+      ownerUrl ? `\n🔑 **Owner link (save this):** ${ownerUrl}` : '',
+    ].filter(Boolean)
 
     return { content: [{ type: 'text', text: lines.join('\n') }] }
   }
@@ -235,26 +235,19 @@ server.tool(
 
     const pageUrl  = `${baseUrl}/play/${slug}`
     const apkUrl   = `${baseUrl}/builds/v2/${build_id}/apk`
+    const ownerUrl = owner_token ? `${baseUrl}/owner/v1/verify?token=${encodeURIComponent(owner_token)}` : null
 
     const lines = [
-      `🎮 **Web page:** ${pageUrl}`,
-      `📱 **Android app (APK):** ${apkUrl}`,
+      `🎮 **Play in browser:** ${pageUrl}`,
+      `📱 **Android APK:** ${apkUrl}`,
     ]
 
-    if (owner_token) {
-      // Verify ownership to get management URL
-      let ownerData
-      try {
-        ownerData = await apiFetch(`/owner/v1/verify?token=${encodeURIComponent(owner_token)}`)
-      } catch {
-        ownerData = null
-      }
-      const ownerUrl = ownerData?.manageUrl || ownerData?.manage_url || `${baseUrl}/owner/v1/verify?token=${owner_token}`
-      lines.push(`🔑 **Management page:** ${ownerUrl}`)
+    if (ownerUrl) {
+      lines.push(`🔑 **Owner link:** ${ownerUrl}`)
     }
 
     lines.push(``)
-    lines.push(`💡 **Note:** To remove AdAppIt branding, visit the owner URL to upgrade.`)
+    lines.push(`Use the owner link to manage your creation (update files, remove branding, etc.)`)
 
     return { content: [{ type: 'text', text: lines.join('\n') }] }
   }
