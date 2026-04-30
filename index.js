@@ -10,6 +10,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
 
 const API_URL = (process.env.ADAPPIT_API_URL || 'https://api.adappit.app').replace(/\/$/, '')
+const APP_URL = (process.env.ADAPPIT_APP_URL || 'https://adappit.app').replace(/\/$/, '')
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -30,26 +31,12 @@ async function apiFetch(path, options = {}) {
   return json
 }
 
-/**
- * Download a URL and return a Buffer.
- * Also accepts a data: URI or raw base64 string.
- */
-async function fetchBytes(urlOrBase64) {
-  // data: URI
-  if (urlOrBase64.startsWith('data:')) {
-    const b64 = urlOrBase64.split(',')[1]
-    return Buffer.from(b64, 'base64')
-  }
-  // raw base64 (no scheme, contains only base64 chars)
-  if (/^[A-Za-z0-9+/=\r\n]+$/.test(urlOrBase64) && !urlOrBase64.startsWith('http')) {
-    return Buffer.from(urlOrBase64, 'base64')
-  }
-  // HTTP(S) URL
+async function fetchBytes(url) {
   let res
-  try { res = await fetch(urlOrBase64) } catch (err) {
-    throw new Error(`Could not download file from ${urlOrBase64}: ${err.message}. Please retry or provide a direct URL.`)
+  try { res = await fetch(url) } catch (err) {
+    throw new Error(`Could not download from ${url}: ${err.message}`)
   }
-  if (!res.ok) throw new Error(`Failed to fetch ${urlOrBase64} — HTTP ${res.status}`)
+  if (!res.ok) throw new Error(`Failed to fetch ${url} — HTTP ${res.status}`)
   return Buffer.from(await res.arrayBuffer())
 }
 
@@ -60,9 +47,6 @@ function mimeFromUrl(url) {
   if (u.endsWith('.webp')) return 'image/webp'
   if (u.endsWith('.zip'))  return 'application/zip'
   if (u.endsWith('.html') || u.endsWith('.htm')) return 'text/html'
-  // data: URI
-  const m = url.match(/^data:([^;,]+)/)
-  if (m) return m[1]
   return 'application/octet-stream'
 }
 
@@ -77,46 +61,49 @@ function filenameFromUrl(url, defaultName) {
 
 const server = new McpServer({
   name: 'adappit',
-  version: '1.0.1',
+  version: '1.0.2',
 })
 
 // ── Tool: publish ─────────────────────────────────────────────────────────────
 
 server.tool(
   'publish',
-  'Publishes an HTML5 game/app to AdAppIt. Generates a real Android app, a hosted web page, and a shareable link. The free version includes a short AdAppIt splash on launch, removable via a paid upgrade. Use only when the user explicitly asks to transform/publish or distribute a game/app (HTML) as a mobile app.',
+  [
+    'Publishes an HTML5 game or app to AdAppIt.',
+    'Generates a real Android APK, a hosted web page, and a shareable link.',
+    'The free version includes a short AdAppIt splash on launch, removable via a paid upgrade.',
+    'Use ONLY when the user explicitly asks to publish, distribute, or convert a game/app to Android.',
+    '',
+    'IMPORTANT: zip_url and icon_url MUST be public HTTPS URLs — local file paths are NOT supported.',
+    'If the user provides a local file, ask them to upload it to a file host (GitHub, Dropbox, etc.) first.',
+    'author: use the real author or studio name provided by the user — never use "AdAppIt" or the platform name.',
+    'email: required — used to send the owner management link.',
+  ].join('\n'),
   {
-    zip_url:     z.string().describe('Public URL to the ZIP or HTML file (also accepts base64 or data: URI).'),
-    icon_url:    z.string().describe('Public URL to a square cover image, minimum 512×512 px (PNG, JPEG, or WebP). Also accepts base64 or data: URI.'),
+    zip_url:     z.string().url().describe('Public HTTPS URL to the game ZIP or single HTML file. Must be directly downloadable (no login required).'),
+    icon_url:    z.string().url().describe('Public HTTPS URL to a square cover image (PNG/JPEG/WebP, minimum 512×512 px).'),
     name:        z.string().describe('Game or app name (max 50 characters).'),
-    author:      z.string().optional().describe('Author or studio name.'),
+    author:      z.string().optional().describe('Real author or studio name provided by the user. Do NOT use "AdAppIt" or any platform name here.'),
     description: z.string().optional().describe('Short description, max 200 characters.'),
-    email:       z.string().describe('Email address to receive the owner management link.'),
+    email:       z.string().email().describe('Author email address — receives the owner management link.'),
   },
   async ({ zip_url, icon_url, name, author, description, email }) => {
-    // Validate inputs
-    if (!zip_url)  return { content: [{ type: 'text', text: 'Error: zip_url is required.' }] }
-    if (!icon_url) return { content: [{ type: 'text', text: 'Error: icon_url is required.' }] }
-    if (!name)     return { content: [{ type: 'text', text: 'Error: name is required.' }] }
-    if (!email)    return { content: [{ type: 'text', text: 'Error: email is required.' }] }
     if (name.length > 50) name = name.slice(0, 50)
     if (description && description.length > 200) description = description.slice(0, 200)
 
     // Download files
-    let zipBytes, iconBytes, iconMime, zipFilename
+    let zipBytes, iconBytes
     try {
-      zipBytes    = await fetchBytes(zip_url)
-      iconBytes   = await fetchBytes(icon_url)
-      iconMime    = mimeFromUrl(icon_url)
-      zipFilename = filenameFromUrl(zip_url, 'game.zip')
+      zipBytes  = await fetchBytes(zip_url)
+      iconBytes = await fetchBytes(icon_url)
     } catch (err) {
-      return { content: [{ type: 'text', text: `Error: ${err.message}` }] }
+      return { content: [{ type: 'text', text: `Error: ${err.message}\n\nMake sure both URLs are public and directly downloadable (no login, no redirect).` }] }
     }
 
-    // Determine zip mime/filename
-    const zipMime = mimeFromUrl(zip_url)
+    const zipMime      = mimeFromUrl(zip_url)
+    const iconMime     = mimeFromUrl(icon_url)
+    const zipFilename  = filenameFromUrl(zip_url, 'game.zip')
 
-    // Build multipart form
     const formData = new FormData()
     formData.append('zip',         new Blob([zipBytes],  { type: zipMime }),  zipFilename)
     formData.append('icon',        new Blob([iconBytes], { type: iconMime }), 'icon.png')
@@ -127,27 +114,22 @@ server.tool(
 
     let result
     try {
-      result = await apiFetch('/builds/v2/zip', {
-        method: 'POST',
-        body: formData,
-      })
+      result = await apiFetch('/builds/v2/zip', { method: 'POST', body: formData })
     } catch (err) {
       return { content: [{ type: 'text', text: `Publish failed: ${err.message}` }] }
     }
 
     const buildId  = result.buildId || result.build_id || result.id
-    const slug      = result.slug || ''
-    const token     = result.ownerToken || result.owner_token || ''
-    const ownerUrl  = token ? `${API_URL}/owner/v1/verify?token=${encodeURIComponent(token)}` : null
+    const token    = result.ownerToken || result.owner_token || ''
+    const ownerUrl = token ? `${APP_URL}/game/${result.slug || buildId}?owner=${token}` : null
 
     const lines = [
-      `✅ Build submitted successfully!`,
+      `✅ Build submitted! It will be ready in 2–5 minutes.`,
       ``,
       `**Build ID:** ${buildId}`,
+      ownerUrl ? `🔑 **Owner link (save this):** ${ownerUrl}` : '',
       ``,
       `Use \`check_build_status\` with build_id="${buildId}" to follow progress.`,
-      `Build typically takes 2–5 minutes.`,
-      ownerUrl ? `\n🔑 **Owner link (save this):** ${ownerUrl}` : '',
     ].filter(Boolean)
 
     return { content: [{ type: 'text', text: lines.join('\n') }] }
@@ -158,13 +140,11 @@ server.tool(
 
 server.tool(
   'check_build_status',
-  'Checks the current status of a game/app build on AdAppIt. Returns status (building/done/failed) and details when done.',
+  'Checks the current status of a game/app build on AdAppIt. Returns status (building/done/failed) and links when done.',
   {
     build_id: z.string().describe('The build ID returned by publish.'),
   },
   async ({ build_id }) => {
-    if (!build_id) return { content: [{ type: 'text', text: 'Error: build_id is required.' }] }
-
     let result
     try {
       result = await apiFetch(`/builds/v2/${build_id}/status`)
@@ -172,37 +152,36 @@ server.tool(
       return { content: [{ type: 'text', text: `Error checking status: ${err.message}` }] }
     }
 
-    const status    = result.status || 'unknown'
-    const slug      = result.slug || ''
-    const errorMsg  = result.error || result.error_msg || ''
+    const status   = result.status || 'unknown'
+    const slug     = result.slug || build_id
+    const errorMsg = result.error || result.error_msg || ''
 
-    let text
     if (status === 'done') {
-      text = [
+      const pageUrl  = `${APP_URL}/game/${slug}`
+      const apkUrl   = `${API_URL}/builds/v2/${build_id}/apk`
+      return { content: [{ type: 'text', text: [
         `✅ Build complete!`,
         ``,
-        `**Status:** done`,
-        slug ? `**Slug:** ${slug}` : '',
+        `🎮 **Play in browser:** ${pageUrl}`,
+        `📱 **Android APK:** ${apkUrl}`,
         ``,
-        `Use \`get_links\` with build_id="${build_id}" to get all download and sharing links.`,
-      ].filter(l => l !== undefined).join('\n')
-    } else if (status === 'build_error' || status === 'error' || status === 'failed') {
-      text = [
-        `❌ Build failed.`,
-        errorMsg ? `**Reason:** ${errorMsg}` : 'No additional details available.',
-        ``,
-        `Please check the game files and try publishing again.`,
-      ].join('\n')
-    } else {
-      text = [
-        `⏳ Build in progress…`,
-        `**Status:** ${status}`,
-        ``,
-        `Check again in 30–60 seconds.`,
-      ].join('\n')
+        `Use \`get_links\` with the owner token to get the full management link.`,
+      ].join('\n') }] }
     }
 
-    return { content: [{ type: 'text', text: text }] }
+    if (status === 'build_error' || status === 'error' || status === 'failed') {
+      return { content: [{ type: 'text', text: [
+        `❌ Build failed.`,
+        errorMsg ? `**Reason:** ${errorMsg}` : 'No details available.',
+        ``,
+        `Please check the game files and try publishing again.`,
+      ].join('\n') }] }
+    }
+
+    return { content: [{ type: 'text', text: [
+      `⏳ Build in progress… (status: ${status})`,
+      `Check again in 30–60 seconds.`,
+    ].join('\n') }] }
   }
 )
 
@@ -210,15 +189,12 @@ server.tool(
 
 server.tool(
   'get_links',
-  'Returns all public links for a published game/app: web page, Android app download, and owner management page.',
+  'Returns all public links for a published game/app: shareable web page, Android APK download, and owner management page.',
   {
     build_id:    z.string().describe('The build ID returned by publish.'),
-    owner_token: z.string().optional().describe('Optional owner token returned by publish. Required to get the management link.'),
+    owner_token: z.string().optional().describe('Owner token returned by publish. Provide it to get the management link.'),
   },
   async ({ build_id, owner_token }) => {
-    if (!build_id) return { content: [{ type: 'text', text: 'Error: build_id is required.' }] }
-
-    // Get status to retrieve slug
     let status
     try {
       status = await apiFetch(`/builds/v2/${build_id}/status`)
@@ -231,18 +207,16 @@ server.tool(
     }
 
     const slug    = status.slug || build_id
-    const baseUrl = API_URL
-
-    const pageUrl  = `${baseUrl}/play/${slug}`
-    const apkUrl   = `${baseUrl}/builds/v2/${build_id}/apk`
-    const ownerUrl = owner_token ? `${baseUrl}/owner/v1/verify?token=${encodeURIComponent(owner_token)}` : null
+    const pageUrl = `${APP_URL}/game/${slug}`
+    const apkUrl  = `${API_URL}/builds/v2/${build_id}/apk`
 
     const lines = [
       `🎮 **Play in browser:** ${pageUrl}`,
       `📱 **Android APK:** ${apkUrl}`,
     ]
 
-    if (ownerUrl) {
+    if (owner_token) {
+      const ownerUrl = `${APP_URL}/game/${slug}?owner=${owner_token}`
       lines.push(`🔑 **Owner link:** ${ownerUrl}`)
     }
 
