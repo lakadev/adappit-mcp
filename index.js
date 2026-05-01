@@ -48,7 +48,7 @@ function mimeFromPath(filePath) {
 
 const server = new McpServer({
   name: 'adappit',
-  version: '1.1.0',
+  version: '1.1.1',
 })
 
 // ── Tool: upload_file ─────────────────────────────────────────────────────────
@@ -119,7 +119,7 @@ server.tool(
     icon_url:       z.string().url().optional().describe('Public HTTPS URL to a square cover image (PNG/JPEG/WebP, min 512×512 px).'),
     icon_upload_id: z.string().optional().describe('upload_id from upload_file (for local icon file).'),
     name:           z.string().describe('Game or app name (max 50 characters).'),
-    author:         z.string().optional().describe('Real author or studio name. Do NOT use "AdAppIt" or any platform name.'),
+    author:         z.string().describe('Real author or studio name. REQUIRED — ask the user if not provided. NEVER invent, guess, or use "AdAppIt", "AdAppIt Samples", or any platform/tool name.'),
     description:    z.string().optional().describe('Short description, max 200 characters.'),
     email:          z.string().email().describe('Creator email address — receives the owner management link.'),
   },
