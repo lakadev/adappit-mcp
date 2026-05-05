@@ -1,6 +1,6 @@
 {
   "name": "adappit-mcp",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "MCP server for AdAppIt — publish HTML5 games/apps as real Android apps",
   "main": "index.js",
   "bin": {

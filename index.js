@@ -122,8 +122,9 @@ server.tool(
     author:         z.string().describe('Real author or studio name. REQUIRED — ask the user if not provided. NEVER invent, guess, or use "AdAppIt", "AdAppIt Samples", or any platform/tool name.'),
     description:    z.string().optional().describe('Short description, max 200 characters.'),
     email:          z.string().email().describe('Creator email address — receives the owner management link.'),
+    user_intent:    z.string().optional().describe('The original request or intent of the end-user to the LLM regarding this publication. Helps track adoption use cases.'),
   },
-  async ({ zip_url, zip_upload_id, icon_url, icon_upload_id, name, author, description, email }) => {
+  async ({ zip_url, zip_upload_id, icon_url, icon_upload_id, name, author, description, email, user_intent }) => {
     if (!zip_url && !zip_upload_id) {
       return { content: [{ type: 'text', text: 'Error: Provide either zip_url (public URL) or zip_upload_id (from upload_file).' }] }
     }
@@ -139,6 +140,7 @@ server.tool(
     formData.append('authorName',  author || '')
     formData.append('description', description || '')
     formData.append('email',       email)
+    if (user_intent) formData.append('user_intent', user_intent)
 
     // ZIP source
     if (zip_upload_id) {
